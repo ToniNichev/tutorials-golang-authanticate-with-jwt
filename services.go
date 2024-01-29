@@ -11,6 +11,13 @@ import (
 	"github.com/golang-jwt/jwt/v5"
 )
 
+type User struct {
+	name  string
+	email string
+}
+
+var user User
+
 type requestBody struct {
 	OperationName *string     `json:"operationName"`
 	Query         *string     `json:"query"`
@@ -18,6 +25,8 @@ type requestBody struct {
 }
 
 func validateSession(c *gin.Context) {
+	user.name = ""
+	user.email = ""
 	if c.Request.Body != nil {
 		bodyBytes, _ := ioutil.ReadAll(c.Request.Body)
 		c.Request.Body.Close()
@@ -65,8 +74,8 @@ func retreiveTokenWithSymmetrikKey(c *gin.Context, tokenStr string) (string, err
 	})
 
 	if err != nil {
-		fmt.Println("Error !")
-		fmt.Println(err)
+		c.AbortWithStatusJSON(401, gin.H{"error": "Session token signature can't be confirmed!"})
+		return "", errors.New("session token signature can't be confirmed!")
 	} else {
 		claims := token.Claims.(jwt.MapClaims)
 		fmt.Println("======================================")
@@ -74,8 +83,9 @@ func retreiveTokenWithSymmetrikKey(c *gin.Context, tokenStr string) (string, err
 		fmt.Println(claims["author"])
 		fmt.Println(claims["data"])
 		fmt.Println("======================================")
+		user.name = claims["author"].(string)
 	}
-	return "retreiveToken: OK 123", nil
+	return "token valid", nil
 }
 
 func retreiveTokenWithAsymmetrikKey(c *gin.Context, tokenStr string) (string, error) {
@@ -85,7 +95,7 @@ func retreiveTokenWithAsymmetrikKey(c *gin.Context, tokenStr string) (string, er
 	publicKeyPath := "key/public_key.pem"
 	keyData, err := ioutil.ReadFile(publicKeyPath)
 	if err != nil {
-		fmt.Println("Error reading the key")
+		c.AbortWithStatusJSON(401, gin.H{"error": "Error reading public key"})
 		return "", errors.New("error reading public key")
 	}
 
@@ -96,6 +106,7 @@ func retreiveTokenWithAsymmetrikKey(c *gin.Context, tokenStr string) (string, er
 
 		// ensure signing method is correct
 		if _, ok := token.Method.(*jwt.SigningMethodRSA); !ok {
+			c.AbortWithStatusJSON(401, gin.H{"error": "Session token signature can't be confirmed!"})
 			return nil, errors.New("unknown signing method")
 		}
 
@@ -118,18 +129,20 @@ func retreiveTokenWithAsymmetrikKey(c *gin.Context, tokenStr string) (string, er
 	fmt.Println("Claims [author]:", claims["author"])
 	fmt.Println("Claims [data]:", claims["data"])
 	fmt.Println("======================================")
+	user.name = claims["author"].(string)
+
 	if !state.Valid {
 		return "", errors.New("verification failed")
 	}
 
 	if err != nil {
-		errors.New("unknown signing error")
+		return "", errors.New("unknown signing error")
 	}
 
-	return "retreiveToken: OK 123", nil
+	return "token valid", nil
 }
 
 func returnData(c *gin.Context) {
 	fmt.Println("Returning data ...")
-	c.String(200, "TEST 123")
+	c.String(200, user.name)
 }
